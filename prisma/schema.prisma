@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -41,5 +35,125 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // relasi netwok te tok
+  services      Service[] @relation("SellerServices")
+  ordersAsBuyer Order[]   @relation("BuyerOrders")
+  reviews       Review[]  @relation("ReviewAuthor")
+
   @@map("users")
+}
+
+model Service {
+  id          String  @id @default(cuid())
+  sellerId    String  @map("seller_id")
+  title       String
+  description String  @db.Text
+  category    String
+  price       Decimal @db.Decimal(10, 2)
+
+  // Delivery details
+  deliveryTime Int @map("delivery_time") // dalam hari
+  revisions    Int @default(1) // jumlah revisi yang diperbolehkan
+
+  // Media
+  images String[] // Array URL gambar
+
+  // Stats
+  totalOrders  Int     @default(0) @map("total_orders")
+  avgRating    Decimal @default(0) @map("avg_rating") @db.Decimal(3, 2)
+  totalReviews Int     @default(0) @map("total_reviews")
+
+  // Status
+  status   String  @default("active") // active, paused, deleted
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  seller  User     @relation("SellerServices", fields: [sellerId], references: [id], onDelete: Cascade)
+  orders  Order[]
+  reviews Review[]
+
+  @@index([sellerId])
+  @@index([category])
+  @@index([status])
+  @@map("services")
+}
+
+model Order {
+  id        String @id @default(cuid())
+  serviceId String @map("service_id")
+  buyerId   String @map("buyer_id")
+
+  // detail pesanan
+  title        String // Snapshot dari service title
+  price        Decimal @db.Decimal(10, 2) // Snapshot harga saat order
+  deliveryTime Int     @map("delivery_time") // Snapshot delivery time
+
+  // Requirements from buyer
+  requirements String   @db.Text // Detail kebutuhan buyer
+  attachments  String[] // File yang diupload buyer
+
+  // Delivery
+  deliveryFiles String[]  @map("delivery_files") // File hasil kerja seller
+  deliveryNote  String?   @map("delivery_note") @db.Text
+  deliveredAt   DateTime? @map("delivered_at")
+
+  // Status & Timeline
+  status String @default("pending") // pending, in_progress, delivered, revision, completed, cancelled, disputed
+
+  // Payment
+  isPaid Boolean   @default(false) @map("is_paid")
+  paidAt DateTime? @map("paid_at")
+
+  // Revisions
+  revisionCount Int @default(0) @map("revision_count")
+  maxRevisions  Int @map("max_revisions") // Snapshot dari service revisions
+
+  // Dates
+  dueDate            DateTime  @map("due_date") // Tenggat waktu
+  completedAt        DateTime? @map("completed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // relasi
+  service Service @relation(fields: [serviceId], references: [id])
+  buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id])
+  review  Review? // One to one - satu order bisa punya satu review
+
+  @@index([serviceId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("orders")
+}
+
+model Review {
+  id      String @id @default(cuid())
+  orderId String @unique @map("order_id") // One to one dengan order
+
+  serviceId String @map("service_id")
+  authorId  String @map("author_id") // User yang menulis review (buyer)
+
+  rating  Int // 1-5
+  comment String @db.Text
+
+  // Seller response
+  sellerResponse String?   @map("seller_response") @db.Text
+  respondedAt    DateTime? @map("responded_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+  author  User    @relation("ReviewAuthor", fields: [authorId], references: [id])
+
+  @@index([serviceId])
+  @@index([authorId])
+  @@map("reviews")
 }
