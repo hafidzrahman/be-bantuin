@@ -3,43 +3,45 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id             String  @id @default(cuid())
-  email          String  @unique
-  password       String?
-  fullName       String  @map("full_name")
-  nim            String? @unique @map("nim")
-  major          String?
-  batch          String?
-  phoneNumber    String? @map("phone_number")
-  profilePicture String? @map("profile_picture")
-  bio            String?
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  password             String?
+  fullName             String    @map("full_name")
+  nim                  String?   @unique @map("nim")
+  major                String?
+  batch                String?
+  phoneNumber          String?   @map("phone_number")
+  profilePicture       String?   @map("profile_picture")
+  bio                  String?
+  googleId             String?   @unique @map("google_id")
+  provider             String    @default("email")
+  isVerified           Boolean   @default(false) @map("is_verified")
+  emailVerifiedAt      DateTime? @map("email_verified_at")
+  isSeller             Boolean   @default(false) @map("is_seller")
+  avgRating            Decimal   @default(0) @map("avg_rating") @db.Decimal(3, 2)
+  totalReviews         Int       @default(0) @map("total_reviews")
+  totalOrdersCompleted Int       @default(0) @map("total_orders_completed")
+  status               String    @default("active")
+  role                 Role      @default(USER)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  googleId String? @unique @map("google_id")
-  provider String  @default("email")
-
-  isVerified      Boolean   @default(false) @map("is_verified")
-  emailVerifiedAt DateTime? @map("email_verified_at")
-
-  isSeller             Boolean @default(false) @map("is_seller")
-  avgRating            Decimal @default(0) @map("avg_rating") @db.Decimal(3, 2)
-  totalReviews         Int     @default(0) @map("total_reviews")
-  totalOrdersCompleted Int     @default(0) @map("total_orders_completed")
-
-  status String @default("active")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // relasi netwok te tok
-  services      Service[] @relation("SellerServices")
-  ordersAsBuyer Order[]   @relation("BuyerOrders")
-  reviews       Review[]  @relation("ReviewAuthor")
+  wallet           Wallet?
+  payoutAccounts   PayoutAccount[]
+  payoutRequests   PayoutRequest[]
+  services         Service[]        @relation("SellerServices")
+  ordersAsBuyer    Order[]          @relation("BuyerOrders")
+  reviews          Review[]         @relation("ReviewAuthor")
+  openedDisputes   Dispute[]        @relation("OpenedDisputes")
+  resolvedDisputes Dispute[]        @relation("ResolvedDisputes")
+  disputeMessages  DisputeMessage[]
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -53,8 +55,8 @@ model Service {
   price       Decimal @db.Decimal(10, 2)
 
   // Delivery details
-  deliveryTime Int @map("delivery_time") // dalam hari
-  revisions    Int @default(1) // jumlah revisi yang diperbolehkan
+  deliveryTime Int @map("delivery_time") // Dalam hari
+  revisions    Int @default(1) // Jumlah revisi yang diperbolehkan
 
   // Media
   images String[] // Array URL gambar
@@ -87,7 +89,7 @@ model Order {
   serviceId String @map("service_id")
   buyerId   String @map("buyer_id")
 
-  // detail pesanan
+  // Detail pesanan
   title        String // Snapshot dari service title
   price        Decimal @db.Decimal(10, 2) // Snapshot harga saat order
   deliveryTime Int     @map("delivery_time") // Snapshot delivery time
@@ -121,10 +123,14 @@ model Order {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // relasi
-  service Service @relation(fields: [serviceId], references: [id])
-  buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id])
+  payment      Payment? // Satu order punya satu payment
+  transactions WalletTransaction[]
+
+  // Relasi
+  service Service  @relation(fields: [serviceId], references: [id])
+  buyer   User     @relation("BuyerOrders", fields: [buyerId], references: [id])
   review  Review? // One to one - satu order bisa punya satu review
+  dispute Dispute?
 
   @@index([serviceId])
   @@index([buyerId])
@@ -157,4 +163,199 @@ model Review {
   @@index([serviceId])
   @@index([authorId])
   @@map("reviews")
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  balance   Decimal  @default(0) @db.Decimal(12, 2) // Saldo yang tersedia
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  payoutRequests PayoutRequest[]
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id        String  @id @default(cuid())
+  walletId  String  @map("wallet_id")
+  orderId   String? @map("order_id") // Link ke order
+  paymentId String? @map("payment_id") // Link ke payment gateway
+
+  type   String // "ESCROW_RELEASE", "ESCROW_REFUND", "WITHDRAWAL"
+  amount Decimal @db.Decimal(12, 2) // Positif (credit) atau Negatif (debit)
+
+  balanceBefore Decimal @map("balance_before") @db.Decimal(12, 2)
+  balanceAfter  Decimal @map("balance_after") @db.Decimal(12, 2)
+  description   String
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  payoutRequestId String?  @map("payout_request_id")
+  disputeId       String?  @map("dispute_id")
+
+  dispute       Dispute?       @relation(fields: [disputeId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  wallet        Wallet         @relation(fields: [walletId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  payment       Payment?       @relation(fields: [paymentId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  payoutRequest PayoutRequest? @relation(fields: [payoutRequestId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+
+  @@index([walletId])
+  @@index([orderId])
+  @@index([type])
+  @@map("wallet_transactions")
+}
+
+model Payment {
+  id      String  @id @default(cuid())
+  orderId String  @unique @map("order_id") // Setiap order memiliki satu payment
+  amount  Decimal @db.Decimal(12, 2)
+  status  String  @default("pending") // "pending", "settlement", "expire", "cancel"
+  gateway String  @default("midtrans")
+
+  gatewayToken       String? @map("gateway_token") // snap_token dari Midtrans
+  gatewayRedirectUrl String? @map("gateway_redirect_url") // snap_redirect_url
+  paymentType        String? @map("payment_type") // mis: "qris", "bank_transfer"
+  transactionId      String? @unique @map("transaction_id") // ID dari Midtrans
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  order        Order               @relation(fields: [orderId], references: [id])
+  transactions WalletTransaction[] // Jika ada refund dari payment gateway lgsg
+
+  @@index([orderId])
+  @@index([status])
+  @@index([transactionId])
+  @@map("payments")
+}
+
+model PayoutAccount {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  bankName      String   @map("bank_name") // mis: "BCA", "Mandiri"
+  accountName   String   @map("account_name") // Nama pemilik rekening
+  accountNumber String   @map("account_number") // Nomor rekening
+  isPrimary     Boolean  @default(false) @map("is_primary")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payouts PayoutRequest[]
+
+  @@unique([userId, accountNumber])
+  @@index([userId])
+  @@map("payout_accounts")
+}
+
+model PayoutRequest {
+  id        String  @id @default(cuid())
+  userId    String  @map("user_id")
+  walletId  String  @map("wallet_id")
+  accountId String  @map("account_id") // Relasi ke PayoutAccount
+  amount    Decimal @db.Decimal(12, 2)
+  status    String  @default("pending") // "pending", "approved", "rejected", "completed"
+
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  processedAt DateTime? @map("processed_at")
+  adminNotes  String?   @map("admin_notes") @db.Text // Alasan jika ditolak
+
+  user               User                @relation(fields: [userId], references: [id])
+  wallet             Wallet              @relation(fields: [walletId], references: [id])
+  account            PayoutAccount       @relation(fields: [accountId], references: [id])
+  walletTransactions WalletTransaction[]
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([status])
+  @@map("payout_requests")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DisputeResolution {
+  RELEASE_TO_SELLER
+  REFUND_TO_BUYER
+}
+
+model Dispute {
+  id         String @id @default(cuid())
+  orderId    String @unique @map("order_id") // Relasi one-to-one dengan Order
+  openedById String @map("opened_by_id") // User (buyer/seller) yang membuka
+
+  status DisputeStatus @default(OPEN)
+  reason String        @db.Text
+
+  // Hasil sengketa
+  resolution   DisputeResolution?
+  resolvedById String?            @map("resolved_by_id") // Admin yang menyelesaikan
+  resolvedAt   DateTime?          @map("resolved_at")
+  adminNotes   String?            @map("admin_notes") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relasi
+  order              Order               @relation(fields: [orderId], references: [id])
+  openedBy           User                @relation("OpenedDisputes", fields: [openedById], references: [id])
+  resolvedBy         User?               @relation("ResolvedDisputes", fields: [resolvedById], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  messages           DisputeMessage[]
+  walletTransactions WalletTransaction[]
+
+  @@index([orderId])
+  @@index([openedById])
+  @@index([resolvedById])
+  @@index([status])
+  @@map("disputes")
+}
+
+model DisputeMessage {
+  id        String @id @default(cuid())
+  disputeId String @map("dispute_id")
+  senderId  String @map("sender_id") // Bisa buyer, seller, atau admin
+
+  content     String   @db.Text
+  attachments String[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relasi
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id])
+
+  @@index([disputeId])
+  @@index([senderId])
+  @@map("dispute_messages")
+}
+
+model Notification {
+  id      String  @id @default(cuid())
+  userId  String  @map("user_id")
+  content String  @db.Text
+  isRead  Boolean @default(false) @map("is_read")
+
+  // Link untuk frontend (mis: /orders/xyz)
+  link String?
+
+  // Tipe untuk pengelompokan (opsional tapi bagus)
+  type String? @default("GENERAL") // ORDER, DISPUTE, WALLET, REVIEW
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relasi
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
 }

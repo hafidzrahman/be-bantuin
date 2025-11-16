@@ -28,20 +28,21 @@ export class OrdersController {
   /**
    * Buat order baru
    * POST /api/orders
-   * 
+   *
    * Buyer membuat order untuk sebuah service
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(
     @GetUser('id') buyerId: string,
-    @Body() createOrderDto: CreateOrderDto
+    @Body() createOrderDto: CreateOrderDto,
   ) {
     const order = await this.ordersService.create(buyerId, createOrderDto);
 
     return {
       success: true,
-      message: 'Order berhasil dibuat. Silakan konfirmasi untuk melanjutkan pembayaran.',
+      message:
+        'Order berhasil dibuat. Silakan konfirmasi untuk melanjutkan pembayaran.',
       data: order,
     };
   }
@@ -49,14 +50,14 @@ export class OrdersController {
   /**
    * Konfirmasi order dan generate payment link
    * POST /api/orders/:id/confirm
-   * 
+   *
    * Buyer mengonfirmasi order yang masih draft
    * Status berubah dari DRAFT -> WAITING_PAYMENT
    */
   @Post(':id/confirm')
   async confirmOrder(
     @Param('id') orderId: string,
-    @GetUser('id') buyerId: string
+    @GetUser('id') buyerId: string,
   ) {
     const result = await this.ordersService.confirmOrder(orderId, buyerId);
 
@@ -64,46 +65,21 @@ export class OrdersController {
       success: true,
       message: result.message,
       data: result.order,
-      // paymentLink: result.paymentLink,
-    };
-  }
-
-  /**
-   * Webhook payment callback
-   * POST /api/orders/payment/callback
-   * 
-   * PENTING: Endpoint ini dipanggil oleh payment gateway
-   * Harus divalidasi dengan signature untuk keamanan
-   * TODO: Implementasi signature validation
-   */
-  @Post('payment/callback')
-  @HttpCode(HttpStatus.OK)
-  async paymentCallback(@Body() paymentData: any) {
-    // TODO: Validate signature dari payment gateway
-    // const isValid = await this.validateSignature(paymentData);
-    // if (!isValid) throw new UnauthorizedException();
-
-    const result = await this.ordersService.handlePaymentSuccess(
-      paymentData.orderId,
-      paymentData
-    );
-
-    return {
-      success: true,
-      // message: result.message,
+      paymentToken: result.paymentToken, // Kirim Snap Token ke frontend
+      paymentRedirectUrl: result.paymentRedirectUrl, // Kirim redirect URL ke frontend
     };
   }
 
   /**
    * Seller memulai pengerjaan
    * POST /api/orders/:id/start
-   * 
+   *
    * Mengubah status dari PAID_ESCROW -> IN_PROGRESS
    */
   @Post(':id/start')
   async startWork(
     @Param('id') orderId: string,
-    @GetUser('id') sellerId: string
+    @GetUser('id') sellerId: string,
   ) {
     const order = await this.ordersService.startWork(orderId, sellerId);
 
@@ -117,19 +93,19 @@ export class OrdersController {
   /**
    * Seller mengirimkan hasil kerja
    * POST /api/orders/:id/deliver
-   * 
+   *
    * Mengubah status dari IN_PROGRESS atau REVISION -> DELIVERED
    */
   @Post(':id/deliver')
   async deliverWork(
     @Param('id') orderId: string,
     @GetUser('id') sellerId: string,
-    @Body() deliverDto: DeliverOrderDto
+    @Body() deliverDto: DeliverOrderDto,
   ) {
     const order = await this.ordersService.deliverWork(
       orderId,
       sellerId,
-      deliverDto
+      deliverDto,
     );
 
     return {
@@ -142,19 +118,19 @@ export class OrdersController {
   /**
    * Buyer meminta revisi
    * POST /api/orders/:id/revision
-   * 
+   *
    * Mengubah status dari DELIVERED -> REVISION
    */
   @Post(':id/revision')
   async requestRevision(
     @Param('id') orderId: string,
     @GetUser('id') buyerId: string,
-    @Body() revisionDto: RequestRevisionDto
+    @Body() revisionDto: RequestRevisionDto,
   ) {
     const order = await this.ordersService.requestRevision(
       orderId,
       buyerId,
-      revisionDto
+      revisionDto,
     );
 
     return {
@@ -167,7 +143,7 @@ export class OrdersController {
   /**
    * Buyer menyetujui hasil kerja
    * POST /api/orders/:id/approve
-   * 
+   *
    * Ini adalah endpoint paling kritis:
    * - Mengubah status menjadi COMPLETED
    * - Melepas escrow ke seller
@@ -176,13 +152,14 @@ export class OrdersController {
   @Post(':id/approve')
   async approveWork(
     @Param('id') orderId: string,
-    @GetUser('id') buyerId: string
+    @GetUser('id') buyerId: string,
   ) {
     const order = await this.ordersService.approveWork(orderId, buyerId);
 
     return {
       success: true,
-      message: 'Pesanan selesai! Dana telah diteruskan ke penyedia jasa. Jangan lupa berikan review.',
+      message:
+        'Pesanan selesai! Dana telah diteruskan ke penyedia jasa. Jangan lupa berikan review.',
       data: order,
     };
   }
@@ -190,20 +167,20 @@ export class OrdersController {
   /**
    * Buyer membatalkan order
    * POST /api/orders/:id/cancel/buyer
-   * 
+   *
    * Buyer bisa cancel jika status masih DRAFT atau WAITING_PAYMENT
    */
   @Post(':id/cancel/buyer')
   async cancelByBuyer(
     @Param('id') orderId: string,
     @GetUser('id') buyerId: string,
-    @Body() cancelDto: CancelOrderDto
+    @Body() cancelDto: CancelOrderDto,
   ) {
     const result = await this.ordersService.cancelOrder(
       orderId,
       buyerId,
       'buyer',
-      cancelDto
+      cancelDto,
     );
 
     return {
@@ -218,20 +195,20 @@ export class OrdersController {
   /**
    * Seller membatalkan order
    * POST /api/orders/:id/cancel/seller
-   * 
+   *
    * Seller bisa cancel dengan alasan valid
    */
   @Post(':id/cancel/seller')
   async cancelBySeller(
     @Param('id') orderId: string,
     @GetUser('id') sellerId: string,
-    @Body() cancelDto: CancelOrderDto
+    @Body() cancelDto: CancelOrderDto,
   ) {
     const result = await this.ordersService.cancelOrder(
       orderId,
       sellerId,
       'seller',
-      cancelDto
+      cancelDto,
     );
 
     return {
@@ -244,13 +221,13 @@ export class OrdersController {
   /**
    * Get all orders
    * GET /api/orders
-   * 
+   *
    * Support filtering by role (buyer/worker), status, search, dll
    */
   @Get()
   async findAll(
     @GetUser('id') userId: string,
-    @Query() filters: OrderFilterDto
+    @Query() filters: OrderFilterDto,
   ) {
     const result = await this.ordersService.findAll(userId, filters);
 
@@ -264,7 +241,7 @@ export class OrdersController {
   /**
    * Get order detail
    * GET /api/orders/:id
-   * 
+   *
    * Hanya buyer atau seller yang terkait yang bisa akses
    */
   @Get(':id')

@@ -7,12 +7,14 @@ import {
   JwtPayload,
 } from './dto/google-auth.dto';
 import { User } from '@prisma/client';
+import { WalletsService } from 'src/wallets/wallets.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private walletService: WalletsService,
   ) {}
 
   async googleLogin(googleUser: GoogleUserDto): Promise<AuthResponseDto> {
@@ -40,6 +42,9 @@ export class AuthService {
           emailVerifiedAt: new Date(),
         },
       });
+
+      // BUATKAN WALLET UNTUK USER BARU
+      await this.walletService.createWallet(user.id);
     } else {
       // Update googleId jika user sudah ada tapi belum punya googleId
       if (!user.googleId) {

@@ -12,7 +12,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Global prefix
+  // Global Prefix
   app.setGlobalPrefix('api');
 
   const port = configService.get<number>('PORT')!;

@@ -2,9 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentsService } from '../payments/payments.service';
+import { WalletsService } from 'src/wallets/wallets.service';
 import type {
   CreateOrderDto,
   DeliverOrderDto,
@@ -13,14 +14,20 @@ import type {
   CancelOrderDto,
 } from './dto/order.dto';
 import { Prisma } from '@prisma/client';
+import { NotificationService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private paymentsService: PaymentsService,
+    private walletService: WalletsService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Membuat order baru
-   * 
+   *
    * Proses ini melibatkan beberapa langkah:
    * 1. Validasi bahwa service exists dan aktif
    * 2. Validasi bahwa buyer bukan pemilik service (tidak bisa order jasa sendiri)
@@ -56,7 +63,7 @@ export class OrdersService {
     // Cek apakah buyer mencoba order jasa sendiri
     if (service.sellerId === buyerId) {
       throw new BadRequestException(
-        'Anda tidak dapat memesan jasa Anda sendiri'
+        'Anda tidak dapat memesan jasa Anda sendiri',
       );
     }
 
@@ -115,21 +122,25 @@ export class OrdersService {
 
   /**
    * Konfirmasi order dan siap untuk pembayaran
-   * 
+   *
    * Mengubah status dari DRAFT ke WAITING_PAYMENT
    * Di sini seharusnya kita juga generate payment link dari Midtrans/Xendit
    * Untuk sekarang, kita akan return payment instructions
    */
-  async confirmOrder(orderId: string, buyerId: string): Promise<{
+  async confirmOrder(
+    orderId: string,
+    buyerId: string,
+  ): Promise<{
     order: any;
     message: string;
-    paymentLink?: string;
+    paymentToken: string;
+    paymentRedirectUrl: string;
   }> {
     const order = await this.findOneWithAccess(orderId, buyerId, 'buyer');
 
     if (order.status !== 'draft') {
       throw new BadRequestException(
-        'Hanya order dengan status draft yang bisa dikonfirmasi'
+        'Hanya order dengan status draft yang bisa dikonfirmasi',
       );
     }
 
@@ -138,24 +149,27 @@ export class OrdersService {
       where: { id: orderId },
       data: { status: 'waiting_payment' },
       include: {
-        service: true,
         buyer: true,
       },
     });
 
-    // TODO: Integrate dengan payment gateway
-    // const paymentLink = await this.generatePaymentLink(updated);
+    // Implementasi TODO: Integrate dengan payment gateway
+    const paymentDetails = await this.paymentsService.createPayment(
+      updated,
+      updated.buyer,
+    );
 
     return {
       order: updated,
       message: 'Silakan lakukan pembayaran untuk melanjutkan pesanan',
-      // paymentLink,
+      paymentToken: paymentDetails.token,
+      paymentRedirectUrl: paymentDetails.redirectUrl,
     };
   }
 
   /**
    * Callback dari payment gateway setelah pembayaran berhasil
-   * 
+   *
    * Ini dipanggil oleh webhook Midtrans/Xendit
    * PENTING: Harus divalidasi dengan signature untuk keamanan
    */
@@ -169,7 +183,6 @@ export class OrdersService {
     }
 
     if (order.isPaid) {
-      // Idempotency: jika sudah paid, return success tanpa update
       return { message: 'Pembayaran sudah diproses sebelumnya' };
     }
 
@@ -185,27 +198,46 @@ export class OrdersService {
         },
       });
 
-      // TODO: Buat record di Payment table
-      // await tx.payment.create({...})
+      // Implementasi TODO: Buat record di Payment table
+      // Ini sudah di-handle oleh PaymentsService (upsert),
+      // kita hanya perlu update status akhir di sini
+      await tx.payment.update({
+        where: { orderId: orderId },
+        data: {
+          status: 'settlement',
+          transactionId: transactionData.transaction_id,
+          paymentType: transactionData.payment_type,
+        },
+      });
 
-      // TODO: Hold dana di escrow (record di WalletTransaction)
-      // await tx.walletTransaction.create({
-      //   type: 'ESCROW_HOLD',
-      //   amount: -order.price,
-      //   ...
-      // })
+      // Implementasi TODO: Hold dana di escrow
+      // Dalam model kita, dana "dipegang" platform.
+      // Tidak ada wallet transaction saat ini.
+      // Kita baru mencatat transaksi saat RELEASE (ke seller) atau REFUND (ke buyer).
+
+      // Ambil sellerId
+      const service = await tx.service.findUniqueOrThrow({
+        where: { id: order.serviceId },
+        select: { sellerId: true },
+      });
+
+      // Buat notifikasi untuk Seller
+      await this.notificationService.createInTx(tx, {
+        userId: service.sellerId,
+        content: `Pesanan baru #${order.id.substring(0, 8)} telah dibayar!`,
+        link: `/seller/orders/${order.id}`,
+        type: 'ORDER',
+      });
 
       return updatedOrder;
     });
-
-    // TODO: Kirim notifikasi ke seller bahwa ada order baru
 
     return result;
   }
 
   /**
    * Seller memulai pengerjaan
-   * 
+   *
    * Mengubah status dari PAID_ESCROW ke IN_PROGRESS
    */
   async startWork(orderId: string, sellerId: string) {
@@ -225,7 +257,7 @@ export class OrdersService {
 
     if (order.status !== 'paid_escrow') {
       throw new BadRequestException(
-        'Hanya order yang sudah dibayar yang bisa dimulai'
+        'Hanya order yang sudah dibayar yang bisa dimulai',
       );
     }
 
@@ -250,14 +282,10 @@ export class OrdersService {
 
   /**
    * Seller mengirimkan hasil kerja
-   * 
+   *
    * Mengubah status dari IN_PROGRESS atau REVISION ke DELIVERED
    */
-  async deliverWork(
-    orderId: string,
-    sellerId: string,
-    dto: DeliverOrderDto
-  ) {
+  async deliverWork(orderId: string, sellerId: string, dto: DeliverOrderDto) {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
@@ -273,7 +301,7 @@ export class OrdersService {
 
     if (order.status !== 'in_progress' && order.status !== 'revision') {
       throw new BadRequestException(
-        'Order harus dalam status dikerjakan atau revisi'
+        'Order harus dalam status dikerjakan atau revisi',
       );
     }
 
@@ -290,34 +318,40 @@ export class OrdersService {
       },
     });
 
-    // TODO: Kirim notifikasi ke buyer untuk review hasil
+    // Buat notifikasi untuk Buyer
+    await this.notificationService.create({
+      userId: updated.buyerId,
+      content: `Pekerjaan untuk pesanan #${updated.id.substring(0, 8)} telah dikirim!`,
+      link: `/buyer/orders/${updated.id}`,
+      type: 'ORDER',
+    });
 
     return updated;
   }
 
   /**
    * Buyer meminta revisi
-   * 
+   *
    * Mengubah status dari DELIVERED ke REVISION
    * Validasi jumlah revisi yang tersisa
    */
   async requestRevision(
     orderId: string,
     buyerId: string,
-    dto: RequestRevisionDto
+    dto: RequestRevisionDto,
   ) {
     const order = await this.findOneWithAccess(orderId, buyerId, 'buyer');
 
     if (order.status !== 'delivered') {
       throw new BadRequestException(
-        'Revisi hanya bisa diminta setelah hasil dikirim'
+        'Revisi hanya bisa diminta setelah hasil dikirim',
       );
     }
 
     // Cek apakah masih ada jatah revisi
     if (order.revisionCount >= order.maxRevisions) {
       throw new BadRequestException(
-        `Anda sudah menggunakan semua ${order.maxRevisions} kali revisi yang tersedia`
+        `Anda sudah menggunakan semua ${order.maxRevisions} kali revisi yang tersedia`,
       );
     }
 
@@ -339,7 +373,7 @@ export class OrdersService {
 
   /**
    * Buyer menyetujui hasil kerja
-   * 
+   *
    * Ini adalah langkah paling kritis:
    * - Mengubah status menjadi COMPLETED
    * - Melepas escrow ke seller
@@ -351,7 +385,7 @@ export class OrdersService {
 
     if (order.status !== 'delivered') {
       throw new BadRequestException(
-        'Hanya hasil yang sudah dikirim yang bisa disetujui'
+        'Hanya hasil yang sudah dikirim yang bisa disetujui',
       );
     }
 
@@ -390,11 +424,24 @@ export class OrdersService {
       });
 
       // TODO: Release escrow
-      // await tx.walletTransaction.create({
-      //   type: 'ESCROW_RELEASE',
-      //   amount: order.price,
-      //   ...
-      // })
+      const sellerWallet = await tx.wallet.findUniqueOrThrow({
+        where: { userId: completedOrder.service.sellerId },
+      });
+
+      // Hitung fee platform (misal 10%)
+      const orderPrice = completedOrder.price.toNumber();
+      const platformFee = orderPrice * 0.1; // 10% fee
+      const amountToSeller = orderPrice - platformFee;
+
+      // Gunakan WalletService untuk mencatat transaksi
+      await this.walletService.createTransaction({
+        tx,
+        walletId: sellerWallet.id,
+        orderId: completedOrder.id,
+        type: 'ESCROW_RELEASE',
+        amount: amountToSeller, // Positif
+        description: `Pelepasan dana untuk order #${completedOrder.id.substring(0, 8)}`,
+      });
 
       return completedOrder;
     });
@@ -407,7 +454,7 @@ export class OrdersService {
 
   /**
    * Membatalkan order
-   * 
+   *
    * Aturan pembatalan:
    * - Buyer bisa cancel jika status masih DRAFT atau WAITING_PAYMENT
    * - Seller bisa cancel jika status PAID_ESCROW dengan alasan valid
@@ -417,15 +464,14 @@ export class OrdersService {
     orderId: string,
     userId: string,
     role: 'buyer' | 'seller',
-    dto: CancelOrderDto
+    dto: CancelOrderDto,
   ) {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
-        ...(role === 'buyer' 
+        ...(role === 'buyer'
           ? { buyerId: userId }
-          : { service: { sellerId: userId } }
-        ),
+          : { service: { sellerId: userId } }),
       },
     });
 
@@ -437,33 +483,61 @@ export class OrdersService {
     const cancellableStatuses = ['draft', 'waiting_payment', 'paid_escrow'];
     if (!cancellableStatuses.includes(order.status)) {
       throw new BadRequestException(
-        'Order dengan status ini tidak bisa dibatalkan. Silakan buka dispute jika ada masalah.'
+        'Order dengan status ini tidak bisa dibatalkan. Silakan buka dispute jika ada masalah.',
       );
     }
 
     // Jika order sudah dibayar, perlu refund
     const needsRefund = order.isPaid;
+    let cancelled;
 
-    const cancelled = await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'cancelled',
-        cancelledAt: new Date(),
-        cancellationReason: dto.reason,
-      },
-    });
+    // Gunakan transaction jika perlu refund
+    if (needsRefund) {
+      cancelled = await this.prisma.$transaction(async (tx) => {
+        const cancelledOrder = await tx.order.update({
+          where: { id: orderId },
+          data: {
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancellationReason: dto.reason,
+          },
+        });
 
-    // TODO: Jika needs refund, proses refund
-    // if (needsRefund) {
-    //   await this.processRefund(orderId);
-    // }
+        // Implementasi TODO: Jika needs refund, proses refund
+        // Kembalikan dana ke wallet buyer
+        const buyerWallet = await tx.wallet.findUniqueOrThrow({
+          where: { userId: order.buyerId },
+        });
+
+        await this.walletService.createTransaction({
+          tx,
+          walletId: buyerWallet.id,
+          orderId: order.id,
+          type: 'ESCROW_REFUND',
+          amount: order.price.toNumber(), // Positif
+          description: `Refund untuk order dibatalkan #${order.id.substring(0, 8)}`,
+        });
+
+        return cancelledOrder;
+      });
+    } else {
+      // Jika tidak perlu refund, update biasa
+      cancelled = await this.prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancellationReason: dto.reason,
+        },
+      });
+    }
 
     return { ...cancelled, refunded: needsRefund };
   }
 
   /**
    * Get all orders dengan filtering
-   * 
+   *
    * Mendukung view dari perspektif buyer atau seller
    */
   async findAll(userId: string, filters: OrderFilterDto) {
@@ -481,10 +555,7 @@ export class OrdersService {
       };
     } else {
       // Jika tidak ada role specified, ambil semua order user tersebut
-      where.OR = [
-        { buyerId: userId },
-        { service: { sellerId: userId } },
-      ];
+      where.OR = [{ buyerId: userId }, { service: { sellerId: userId } }];
     }
 
     // Filter status
@@ -569,10 +640,7 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({
       where: {
         id: orderId,
-        OR: [
-          { buyerId: userId },
-          { service: { sellerId: userId } },
-        ],
+        OR: [{ buyerId: userId }, { service: { sellerId: userId } }],
       },
       include: {
         service: {
@@ -615,7 +683,7 @@ export class OrdersService {
   private async findOneWithAccess(
     orderId: string,
     userId: string,
-    requiredRole: 'buyer' | 'seller'
+    requiredRole: 'buyer' | 'seller',
   ) {
     const order = await this.prisma.order.findFirst({
       where: {

@@ -7,14 +7,14 @@ import { UsersModule } from './users/users.module';
 import { ServicesModule } from './services/services.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
-import { WalletModule } from './wallet/wallet.module';
-import { ChatModule } from './chat/chat.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AdminModule } from './admin/admin.module';
 import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { WalletsModule } from './wallets/wallets.module';
+import { ChatsModule } from './chats/chats.module';
 
 @Module({
   imports: [
@@ -26,13 +26,13 @@ import { PrismaModule } from './prisma/prisma.module';
     ServicesModule,
     OrdersModule,
     PaymentsModule,
-    WalletModule,
-    ChatModule,
     ReviewsModule,
     DisputesModule,
     NotificationsModule,
     AdminModule,
     PrismaModule,
+    WalletsModule,
+    ChatsModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
