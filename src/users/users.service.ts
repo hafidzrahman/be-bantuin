@@ -178,21 +178,21 @@ export class UsersService {
       this.prisma.order.count({
         where: {
           serviceId: { in: serviceIds },
-          status: { in: ['pending', 'in_progress', 'delivered'] },
+          status: { in: ['DRAFT', 'IN_PROGRESS', 'DELIVERED'] },
         },
       }),
       // Completed orders
       this.prisma.order.count({
         where: {
           serviceId: { in: serviceIds },
-          status: 'completed',
+          status: 'COMPLETED',
         },
       }),
       // Total revenue (completed orders only)
       this.prisma.order.aggregate({
         where: {
           serviceId: { in: serviceIds },
-          status: 'completed',
+          status: 'COMPLETED',
         },
         _sum: {
           price: true,

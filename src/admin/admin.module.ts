@@ -1,11 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
-// PrismaModule dan WalletModule sudah Global,
-// jadi tidak perlu di-import di sini.
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
+  imports: [forwardRef(() => OrdersModule)],
   controllers: [AdminController],
   providers: [AdminService],
+  exports: [AdminService],
 })
 export class AdminModule {}

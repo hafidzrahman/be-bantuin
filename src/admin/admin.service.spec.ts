@@ -3,6 +3,7 @@ import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { OrdersService } from '../orders/orders.service';
 
 describe('AdminService', () => {
   let service: AdminService;
@@ -10,6 +11,7 @@ describe('AdminService', () => {
   const mockPrismaService = {};
   const mockWalletsService = {};
   const mockNotificationsService = {};
+  const mockOrdersService = {};
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -18,6 +20,7 @@ describe('AdminService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: WalletsService, useValue: mockWalletsService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: OrdersService, useValue: mockOrdersService },
       ],
     }).compile();
 

@@ -74,21 +74,18 @@ export const OrderFilterSchema = z.object({
   // Filter berdasarkan status order
   status: z
     .enum([
-      'draft',
-      'waiting_payment',
-      'paid_escrow',
-      'in_progress',
-      'delivered',
-      'revision',
-      'completed',
-      'cancelled',
-      'disputed',
-      'resolved',
+      'DRAFT',
+      'WAITING_PAYMENT',
+      'PAID_ESCROW',
+      'IN_PROGRESS',
+      'DELIVERED',
+      'REVISION',
+      'COMPLETED',
+      'CANCELLED',
+      'DISPUTED',
+      'RESOLVED',
     ])
     .optional(),
-
-  // Filter berdasarkan status pembayaran
-  paymentStatus: z.enum(['unpaid', 'paid', 'refunded']).optional(),
 
   // Pencarian berdasarkan judul service
   search: z.string().optional(),
@@ -117,24 +114,6 @@ export const CancelOrderSchema = z.object({
 });
 
 /**
- * Schema untuk membuka dispute
- *
- * Ketika ada masalah serius yang tidak bisa diselesaikan
- * secara langsung, salah satu pihak bisa membuka dispute
- */
-export const CreateDisputeSchema = z.object({
-  reason: z
-    .string()
-    .min(50, { message: 'Alasan dispute minimal 50 karakter' })
-    .max(2000, { message: 'Alasan dispute maksimal 2000 karakter' }),
-
-  evidence: z
-    .array(z.string().url({ message: 'URL bukti tidak valid' }))
-    .min(1, { message: 'Minimal 1 bukti diperlukan untuk dispute' })
-    .max(10, { message: 'Maksimal 10 file bukti' }),
-});
-
-/**
  * Schema untuk response pembayaran dari payment gateway
  *
  * Ini adalah data yang diterima dari webhook Midtrans/Xendit
@@ -143,7 +122,7 @@ export const CreateDisputeSchema = z.object({
 export const PaymentCallbackSchema = z.object({
   orderId: z.string(),
   transactionId: z.string(),
-  status: z.enum(['pending', 'settlement', 'success', 'failed', 'expired']),
+  status: z.enum(['PENDING', 'SETTLEMENT', 'SUCCESS', 'FAILED', 'EXPIRED']),
   amount: z.number().positive(),
   paymentMethod: z.string(),
   paidAt: z.string().optional(), // ISO date string
@@ -155,5 +134,4 @@ export type DeliverOrderDto = z.infer<typeof DeliverOrderSchema>;
 export type RequestRevisionDto = z.infer<typeof RequestRevisionSchema>;
 export type OrderFilterDto = z.infer<typeof OrderFilterSchema>;
 export type CancelOrderDto = z.infer<typeof CancelOrderSchema>;
-export type CreateDisputeDto = z.infer<typeof CreateDisputeSchema>;
 export type PaymentCallbackDto = z.infer<typeof PaymentCallbackSchema>;

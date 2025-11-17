@@ -52,7 +52,7 @@ export class DisputesService {
       // Update status order menjadi 'disputed'
       await tx.order.update({
         where: { id: orderId },
-        data: { status: 'disputed' },
+        data: { status: 'DISPUTED' },
       });
 
       // Buat entri dispute

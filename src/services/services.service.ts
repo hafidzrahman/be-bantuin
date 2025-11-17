@@ -56,7 +56,7 @@ export class ServicesService {
         deliveryTime: dto.deliveryTime,
         revisions: dto.revisions,
         images: dto.images || [],
-        status: 'active',
+        status: 'ACTIVE',
         isActive: true,
       },
       include: {
@@ -97,7 +97,7 @@ export class ServicesService {
     // Build where clause
     const where: Prisma.ServiceWhereInput = {
       isActive: true,
-      status: 'active',
+      status: 'ACTIVE',
     };
 
     // Search query
@@ -219,7 +219,7 @@ export class ServicesService {
         reviews: {
           where: {
             order: {
-              status: 'completed',
+              status: 'COMPLETED',
             },
           },
           take: 10,
@@ -245,7 +245,7 @@ export class ServicesService {
     }
 
     // Check if service is active
-    if (!service.isActive || service.status !== 'active') {
+    if (!service.isActive || service.status !== 'ACTIVE') {
       throw new NotFoundException('Jasa tidak tersedia');
     }
 
@@ -343,7 +343,7 @@ export class ServicesService {
       where: {
         serviceId: id,
         status: {
-          in: ['pending', 'in_progress', 'delivered'],
+          in: ['DRAFT', 'IN_PROGRESS', 'DELIVERED'],
         },
       },
     });
@@ -358,7 +358,7 @@ export class ServicesService {
     await this.prisma.service.update({
       where: { id },
       data: {
-        status: 'deleted',
+        status: 'DELETED',
         isActive: false,
       },
     });
@@ -373,7 +373,7 @@ export class ServicesService {
     const services = await this.prisma.service.findMany({
       where: {
         sellerId,
-        status: { not: 'deleted' },
+        status: { not: 'DELETED' },
       },
       orderBy: {
         createdAt: 'desc',

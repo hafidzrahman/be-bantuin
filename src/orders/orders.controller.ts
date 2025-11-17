@@ -17,6 +17,7 @@ import type {
   DeliverOrderDto,
   OrderFilterDto,
   CancelOrderDto,
+  RequestRevisionDto,
 } from './dto/order.dto';
 import { Order } from '@prisma/client';
 
@@ -128,8 +129,13 @@ export class OrdersController {
   async requestRevision(
     @Param('id') orderId: string,
     @GetUser('id') buyerId: string,
+    @Body() dto: RequestRevisionDto,
   ) {
-    const order = await this.ordersService.requestRevision(orderId, buyerId);
+    const order = await this.ordersService.requestRevision(
+      orderId,
+      buyerId,
+      dto,
+    );
 
     return {
       success: true,

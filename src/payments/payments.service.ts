@@ -41,7 +41,7 @@ export class PaymentsService {
       where: { orderId: order.id },
     });
 
-    if (existingPayment && existingPayment.status === 'pending') {
+    if (existingPayment && existingPayment.status === 'PENDING') {
       return {
         token: existingPayment.gatewayToken,
         redirectUrl: existingPayment.gatewayRedirectUrl,
@@ -78,14 +78,14 @@ export class PaymentsService {
         where: { orderId: order.id },
         update: {
           amount: order.price,
-          status: 'pending',
+          status: 'PENDING',
           gatewayToken: token,
           gatewayRedirectUrl: redirect_url,
         },
         create: {
           orderId: order.id,
           amount: order.price,
-          status: 'pending',
+          status: 'PENDING',
           gatewayToken: token,
           gatewayRedirectUrl: redirect_url,
         },
@@ -135,8 +135,8 @@ export class PaymentsService {
 
     // 3. Idempotency Check: Jika status sudah "settlement", jangan proses lagi
     if (
-      payment.status === 'settlement' &&
-      transaction_status === 'settlement'
+      payment.status === 'SETTLEMENT' &&
+      transaction_status === 'SETTLEMENT'
     ) {
       return { message: 'Payment already processed' };
     }
@@ -148,16 +148,16 @@ export class PaymentsService {
       transaction_status === 'settlement' ||
       transaction_status === 'capture'
     ) {
-      updatedStatus = 'settlement';
+      updatedStatus = 'SETTLEMENT';
     } else if (transaction_status === 'pending') {
-      updatedStatus = 'pending';
+      updatedStatus = 'PENDING';
     } else if (transaction_status === 'expire') {
-      updatedStatus = 'expire';
+      updatedStatus = 'EXPIRE';
     } else if (
       transaction_status === 'cancel' ||
       transaction_status === 'deny'
     ) {
-      updatedStatus = 'cancelled';
+      updatedStatus = 'CANCELLED';
     }
 
     await this.prisma.payment.update({
@@ -170,7 +170,7 @@ export class PaymentsService {
     });
 
     // 5. PANCARKAN EVENT (Jika sukses)
-    if (updatedStatus === 'settlement') {
+    if (updatedStatus === 'SETTLEMENT') {
       // Daripada mengembalikan, kita pancarkan event
       this.eventEmitter.emit('payment.settled', {
         orderId: order_id,

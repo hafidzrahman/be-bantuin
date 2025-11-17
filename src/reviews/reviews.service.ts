@@ -35,7 +35,7 @@ export class ReviewsService {
     if (order.buyerId !== buyerId) {
       throw new ForbiddenException('Anda bukan pembeli dari pesanan ini');
     }
-    if (order.status !== 'completed') {
+    if (order.status !== 'COMPLETED') {
       throw new BadRequestException(
         'Review hanya bisa diberikan untuk pesanan yang sudah selesai',
       );
