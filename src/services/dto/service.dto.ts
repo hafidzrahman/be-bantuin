@@ -60,7 +60,14 @@ export const ServiceFilterSchema = z.object({
   q: z.string().optional(),
   category: z
     .enum([
-      // ...
+      'DESIGN',
+      'DATA',
+      'CODING',
+      'WRITING',
+      'EVENT',
+      'TUTOR',
+      'TECHNICAL',
+      'OTHER',
     ])
     .optional(),
   priceMin: z.coerce.number().positive().optional(), // <-- UBAH DI SINI
