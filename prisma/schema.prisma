@@ -65,6 +65,12 @@ enum DisputeResolution {
   REFUND_TO_BUYER
 }
 
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
 model User {
   id                   String    @id @default(cuid())
   email                String    @unique
@@ -101,6 +107,8 @@ model User {
   notifications            Notification[]
   conversationParticipants ConversationParticipant[]
   messagesSent             Message[]
+  reportsCreated           Report[]                  @relation("ReportsCreated")
+  reportsReceived          Report[]                  @relation("ReportsReceived")
 
   @@map("users")
 }
@@ -412,4 +420,27 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@map("messages")
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  reporterId     String       @map("reporter_id")
+  reportedUserId String       @map("reported_user_id") // User yang dilaporkan
+  reason         String // Alasan: "Spam", "Penipuan", dll
+  description    String       @db.Text
+  evidence       String[] // Bukti gambar (opsional)
+  status         ReportStatus @default(OPEN)
+
+  adminNotes String?   @map("admin_notes") @db.Text
+  resolvedAt DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reporter     User @relation("ReportsCreated", fields: [reporterId], references: [id])
+  reportedUser User @relation("ReportsReceived", fields: [reportedUserId], references: [id])
+
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@map("reports")
 }
